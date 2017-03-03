@@ -1,0 +1,58 @@
+html, body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: "Roboto Mono", monospace;
+}
+
+p {
+  padding: 0;
+  margin: 0;
+}
+
+.output {
+  height: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 1;
+  flex-grow: 0;
+  padding: 0 10px;
+}
+
+.input_cont {
+  height: 20px;
+  width: calc(100% - 20px);
+  background-color: lightgrey;
+  flex-shrink: 0;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: row;
+  padding: 0 10px;
+}
+
+.input_cont p {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+input {
+  height: 100%;
+  width: 100%;
+  flex-shrink: 1;
+  font-family: "Roboto Mono", monospace;
+  border: none;
+  background-color: lightgrey;
+  padding: 0;
+  margin: 0;
+  margin-left: 7px;
+}
+
+input:focus {
+  outline: none;
+}
