@@ -1,10 +1,16 @@
 var cmd_history;
 var bookmarks;
 var def_search = "google";
-var search_ops = {"google":google,"bing":bing,"duckduckgo":duckduckgo,"youtube":youtube};
+var search_bases = {"google":"https://www.google.com/search?q=",
+                    "bing":"https://www.bing.com/search?q=",
+                    "duckduckgo":"https://duckduckgo.com/?q=",
+                    "duck":"https://duckduckgo.com/?q=",
+                    "wolfram":"http://www.wolframalpha.com/input/?i=",
+                    "wolframalpha":"http://www.wolframalpha.com/input/?i=",
+                    "youtube":"https://www.youtube.com/results?search_query="};
 
 var cur_hist_ind;
-var prompt_base = "chrome@"
+var prompt_base = "chrome@";
 var user_name = "you";
 var cwd = "~";
 var prompt_ind = "$";
@@ -17,40 +23,17 @@ var prompt_ind = "$";
 function get_query_string(tokens) {
   var q_str = "";
   for (var i = 0; i < tokens.length; i++) {
-    q_str += tokens[i];
+    q_str += encodeURIComponent(tokens[i]);
     if (i < tokens.length-1) q_str += "+";
   }
   return q_str;
 }
 
-function google(tokens) {
-  var base = "https://www.google.com/search?q=" + get_query_string(tokens);
-  window.open(base, '_blank');
-}
-
-function bing(tokens) {
-  var base = "https://www.bing.com/search?q=" + get_query_string(tokens);
-  window.open(base, '_blank');
-}
-
-function duckduckgo(tokens) {
-  var base = "https://duckduckgo.com/?q=" + get_query_string(tokens);
-  window.open(base, '_blank');
-}
-
-function youtube(tokens) {
-  var base = "https://www.youtube.com/results?search_query=" + get_query_string(tokens);
-  window.open(base, '_blank');
-}
-
 function search(tokens, op) {
-  if (tokens.length < 1) {
-    update_output("Usage: " + op + " [query]");
-    update_output("To change the default search engine, refer to the 'set' command");
-    return;
-  }
-  search_ops[op](tokens);
-  update_output("searching " + op + "...")
+  var base = search_bases[op];
+  var ext = get_query_string(tokens);
+  update_output("searching " + op + "...");
+  window.open(base + ext, '_blank');
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,7 +106,7 @@ function get_parent(tree) {
 }
 
 function get_cur_pos() {
-  var dir_tokens = cwd.replace("~","").split("/");
+  var dir_tokens = tokenize_inp(cwd.replace("~",""),"/");
   var tree_cur = bookmarks;
   while (dir_tokens[0] == "") {
     dir_tokens.splice(0,1);
@@ -135,7 +118,6 @@ function get_cur_pos() {
     for (var j = 0; j < tree_cur.children.length; j++) {
       if (tree_cur.children[j].title == dir_tokens[0]) {
         tree_cur = tree_cur.children[j];
-        console.log(tree_cur);
         break;
       }
     }
@@ -148,23 +130,24 @@ function get_cur_pos() {
 function get_temp_new_pos(dir_str) {
   var tree_cur = get_cur_pos();
 
-  var dir_tokens = dir_str.split("/");
+  var dir_tokens = tokenize_inp(dir_str,"/");
+  console.log(dir_tokens);
   // check for root dir
-  if (dir_tokens[0] == "~" || dir_tokens[0] == "") {
+  if (dir_tokens[0] == "~") {
     tree_cur = bookmarks;
     dir_tokens.splice(0,1);
   }
   while (dir_tokens.length > 0) {
     var found = false;
-    for (var j = 0; j < tree_cur.children.length; j++) {
-      if (dir_tokens[0] == "..") {
-        tree_temp = get_parent(tree_cur);
-        if (tree_temp) {
-          tree_cur = tree_temp;
-        }
-        found = true;
-        break;
+    if (dir_tokens[0] == "..") {
+      tree_temp = get_parent(tree_cur);
+      if (tree_temp) {
+        tree_cur = tree_temp;
       }
+      found = true;
+      break;
+    }
+    for (var j = 0; j < tree_cur.children.length; j++) {
       if (tree_cur.children[j].title == dir_tokens[0]) {
         found = true;
         tree_cur = tree_cur.children[j];
@@ -196,7 +179,6 @@ function ls(tokens) {
     return;
   }
   var ls_str = "";
-  console.log(tree_cur);
   for (var i = 0; i < tree_cur.children.length; i++) {
     ls_str += tree_cur.children[i].title;
     if (i < tree_cur.children.length-1) {
@@ -216,13 +198,14 @@ function cd(tokens) {
     update_output("usage: cd [folder]");
     return;
   }
-
+  console.log(tokens[0]);
   tree_cur = get_temp_new_pos(tokens[0]);
+  console.log(tree_cur);
   if (!tree_cur) {
     update_output("cd: No such file or directory: " + tokens[0]);
     return;
   }
-  if (!tree_cur.children) {
+  if (tree_cur.children.length < 1) {
     update_output("cd: not a directory: " + tokens[0]);
     return;
   }
@@ -239,28 +222,57 @@ function cd(tokens) {
     cwd = cwd_tok.join("/");
   }
 }
-//
-// function star_match(pat, str, st_en) {
-//   if (st_en) {
-//     while (true) {
-//
-//     }
-//   }
-//   else {
-//
-//   }
-// }
+
+/**
+ * return true if str starts with pat.
+ */
+function match_pat(pat, str) {
+  if (pat.length == 0) {
+    return true;
+  }
+  else if (str.length == 0 && pat.length > 0 && pat != "*") {
+    return false;
+  }
+  else if (str.length == 0 && pat.length > 0 && pat == "*") {
+    return true;
+  }
+  else if (pat[0] == str[0]) {
+    return match_pat(pat.substr(1,pat.length-1), str.substr(1,pat.length-1));
+  }
+  else if (pat[0] == "*") {
+    return match_pat(pat, str.substr(1,pat.length-1));
+  }
+  else if (pat[0] != str[0]) {
+    return false;
+  }
+}
+
+/**
+ * return true if str and pat are equal.
+ */
+function match_str(pat, str) {
+  if (pat.length == 0 && str.length == 0) {
+    return true;
+  }
+  if (pat.length == 0 && str.length > 0) {
+    return false;
+  }
+  else {
+    return match_pat(pat, str);
+  }
+}
 
 function bk_open(tokens) {
   if (tokens.length < 1) {
     update_output("usage: open [bookmark ...]");
   }
   var tree_cur = get_cur_pos();
+  var to_open = [];
   for (var i = 0; i < tokens.length; i++) {
     var found = false;
     for (var j = 0; j < tree_cur.children.length; j++) {
-      if (tokens[i] == tree_cur.children[j].title && tree_cur.children[j].url) {
-        window.open(tree_cur.children[j].url, '_blank');
+      if (match_str(tokens[i], tree_cur.children[j].title) && tree_cur.children[j].url) {
+        to_open.push(tree_cur.children[j].url);
         found = true;
       }
     }
@@ -268,6 +280,10 @@ function bk_open(tokens) {
       update_output("open: not a bookmark: " + tokens[i]);
     }
   }
+  for (var i = 0; i < to_open.length; i++) {
+    window.open(to_open[i], '_blank');
+  }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -276,9 +292,9 @@ function update_inp_val(new_val) {
   document.getElementById('main_input').value = new_val;
 }
 
-function tokenize_inp(inp_str) {
+function tokenize_inp(inp_str,del) {
   // tokenize
-  var tokens = inp_str.split(" ");
+  var tokens = inp_str.split(del);
 
   while (tokens.indexOf("") > -1) {
     tokens.splice(tokens.indexOf(""),1);
@@ -297,6 +313,30 @@ function tokenize_inp(inp_str) {
   return tokens;
 }
 
+function tab_complete() {
+  var inp_str = document.getElementById('main_input').value;
+  var inp_tokens = tokenize_inp(inp_str," ");
+
+  if (inp_tokens.length == 0) return;
+
+  var to_comp = inp_tokens.splice(inp_tokens.length-1,1)[0];
+
+  var tree_cur = get_cur_pos();
+  var options = [];
+  for (var i = 0; i < tree_cur.children.length; i++) {
+    if (match_pat(to_comp,tree_cur.children[i].title)) {
+      options.push(tree_cur.children[i].title);
+    }
+  }
+
+  if (options.length > 1 || options.length < 1) {
+    return;
+  }
+  else {
+    document.getElementById('main_input').value = inp_tokens.join(" ") + " " + options[0].replace(" ","\\ ");
+  }
+}
+
 function parse_input() {
   get_bookmarks();
   // take input
@@ -306,14 +346,14 @@ function parse_input() {
   // add command to history
   add_history(inp_str);
 
-  var tokens = tokenize_inp(inp_str);
+  var tokens = tokenize_inp(inp_str," ");
 
   var main_cmd = tokens.splice(0,1);
   // match
-  if (main_cmd == "search") {
+  if (main_cmd == "search" || main_cmd == "s") {
     search(tokens,def_search);
   }
-  else if (search_ops[main_cmd]) {
+  else if (search_bases[main_cmd]) {
     search(tokens,main_cmd);
   }
   else if (main_cmd == "ls") {
@@ -377,6 +417,11 @@ function keydown_handler(key_ev) {
       // down
       next_cmd();
       break;
+    case 9:
+      // enter
+      key_ev.preventDefault();
+      tab_complete();
+      break;
   }
 }
 
@@ -393,7 +438,7 @@ function key_handler(key_ev) {
 
 function add_listeners() {
   window.addEventListener('keypress',key_handler);
-  document.getElementById('main_input').addEventListener('keydown',keydown_handler);
+  window.addEventListener('keydown',keydown_handler,false);
   window.addEventListener('click',auto_focus);
 }
 
