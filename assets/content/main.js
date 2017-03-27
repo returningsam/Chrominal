@@ -15,11 +15,66 @@ var user_name = "you";
 var cwd = "~";
 var prompt_ind = "$";
 
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// HELPERS //////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * return true if str starts with pat.
+ * @param  {string}  pat pattern to match to the string
+ * @param  {string}  str string to check
+ * @return {boolean}
+ */
+function match_pat(pat, str) {
+  if (pat.length == 0) {
+    return true;
+  }
+  else if (str.length == 0 && pat.length > 0 && pat != "*") {
+    return false;
+  }
+  else if (str.length == 0 && pat.length > 0 && pat == "*") {
+    return true;
+  }
+  else if (pat[0] == str[0]) {
+    return match_pat(pat.substr(1,pat.length-1), str.substr(1,pat.length-1));
+  }
+  else if (pat[0] == "*") {
+    return match_pat(pat, str.substr(1,pat.length-1));
+  }
+  else if (pat[0] != str[0]) {
+    return false;
+  }
+}
+
+/**
+ * return true if str and pat are equal.
+ * @param  {string}  pat pattern to match to the string
+ * @param  {string}  str string to check
+ * @return {boolean}
+ */
+function match_str(pat, str) {
+  if (pat.length == 0 && str.length == 0) {
+    return true;
+  }
+  if (pat.length == 0 && str.length > 0) {
+    return false;
+  }
+  else {
+    return match_pat(pat, str);
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// SEARCH ///////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * create the query string for a search. encodes charachters for use in a url.
+ * @param  {Array<string>} tokens tokens of search query
+ * @return {string}               encoded string
+ */
 function get_query_string(tokens) {
   var q_str = "";
   for (var i = 0; i < tokens.length; i++) {
@@ -29,6 +84,11 @@ function get_query_string(tokens) {
   return q_str;
 }
 
+/**
+ * opens a new tab with a search from the specified search engine
+ * @param  {Array<string>} tokens array of search tokens
+ * @param  {string}        op     specified search engine
+ */
 function search(tokens, op) {
   var base = search_bases[op];
   var ext = get_query_string(tokens);
@@ -42,6 +102,10 @@ function search(tokens, op) {
 ///////////////////////////////// HISTORY //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Adds an input string to the history array
+ * @param {string} inp_str input string to add
+ */
 function add_history(inp_str) {
   if (!cmd_history) {
     cmd_history = [];
@@ -51,6 +115,10 @@ function add_history(inp_str) {
   update_output(get_prompt() + " " + inp_str);
 }
 
+/**
+ * handles displaying the previous command from the history. triggered by
+ * pressing the up arrow.
+ */
 function prev_cmd() {
   if (cur_hist_ind != null && cur_hist_ind > 0) {
     cur_hist_ind--;
@@ -58,6 +126,10 @@ function prev_cmd() {
   }
 }
 
+/**
+ * handles displaying the next command from the history. triggered by
+ * pressing the down arrow.
+ */
 function next_cmd() {
   if (cur_hist_ind != null && cur_hist_ind < cmd_history.length) {
     cur_hist_ind++;
@@ -76,10 +148,16 @@ function next_cmd() {
 ///////////////////////////////// BOOKMARKS ////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-function get_bookmarks() {
+/**
+ * get the bookmarks tree from chrome and calls the callback function if defined
+ * @param  {Function} callback
+ */
+function get_bookmarks(callback) {
   chrome.bookmarks.getTree( function (tree) {
     bookmarks = tree[0];
-    //console.log(bookmarks);
+    if (callback) {
+      callback();
+    }
   });
 }
 
@@ -88,10 +166,12 @@ function get_parent_rec(tree,parent_id) {
 
   else {
     var found_tree = false;
-    for (var i = 0; i < tree.children.length; i++) {
-      if (!found_tree) {
-        found_tree = get_parent_rec(tree.children[i],parent_id);
-        if (found_tree) break;
+    if (tree.children) {
+      for (var i = 0; i < tree.children.length; i++) {
+        if (!found_tree) {
+          found_tree = get_parent_rec(tree.children[i],parent_id);
+          if (found_tree) break;
+        }
       }
     }
     return found_tree;
@@ -123,7 +203,6 @@ function get_cur_pos() {
     }
     dir_tokens.splice(0,1);
   }
-
   return tree_cur;
 }
 
@@ -131,7 +210,6 @@ function get_temp_new_pos(dir_str) {
   var tree_cur = get_cur_pos();
 
   var dir_tokens = tokenize_inp(dir_str,"/");
-  console.log(dir_tokens);
   // check for root dir
   if (dir_tokens[0] == "~") {
     tree_cur = bookmarks;
@@ -162,32 +240,31 @@ function get_temp_new_pos(dir_str) {
   return tree_cur;
 }
 
-function ls(tokens) {
-  var tree_cur;
-  if (tokens.length == 1) {
-    tree_cur = get_temp_new_pos(tokens[0]);
-    if (!tree_cur) {
-      update_output("ls: " + tokens[0] + ": No such file or directory");
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// COMMANDS /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+function get_flags(tokens) {
+  var flags = [];
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i].indexOf("-") == 0) {
+      flags.push(tokens.splice(i,1)[0].replace("-",""));
+      i--;
     }
   }
-  else if (tokens.length == 0) {
-    tree_cur = get_cur_pos();
-  }
-  else {
-    update_output("usage: ls [folder]");
-    update_output("support for multiple folders will be added later");
-    return;
-  }
-  var ls_str = "";
-  for (var i = 0; i < tree_cur.children.length; i++) {
-    ls_str += tree_cur.children[i].title;
-    if (i < tree_cur.children.length-1) {
-      ls_str += "\xa0\xa0\xa0\xa0\xa0\xa0";
+  return flags;
+}
+
+function rem_flags(tokens) {
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i].indexOf("-") == 0) {
+      tokens.splice(i,1);
+      i--;
     }
   }
-  if (ls_str.length > 0) {
-    update_output(ls_str);
-  }
+  return tokens;
 }
 
 function cd(tokens) {
@@ -219,46 +296,53 @@ function cd(tokens) {
       ind = cwd_tok.indexOf("..");
       cwd_tok.splice(ind,1);
     }
+
+    while (cwd_tok.indexOf("~") > -1) {
+      cwd_tok.splice(0,1);
+    }
+    cwd_tok.unshift("~");
     cwd = cwd_tok.join("/");
   }
 }
 
-/**
- * return true if str starts with pat.
- */
-function match_pat(pat, str) {
-  if (pat.length == 0) {
-    return true;
+function ls(tokens) {
+  var tree_cur;
+  if (tokens.length == 1) {
+    tree_cur = get_temp_new_pos(tokens[0]);
+    if (!tree_cur) {
+      update_output("ls: " + tokens[0] + ": No such file or directory");
+    }
   }
-  else if (str.length == 0 && pat.length > 0 && pat != "*") {
-    return false;
-  }
-  else if (str.length == 0 && pat.length > 0 && pat == "*") {
-    return true;
-  }
-  else if (pat[0] == str[0]) {
-    return match_pat(pat.substr(1,pat.length-1), str.substr(1,pat.length-1));
-  }
-  else if (pat[0] == "*") {
-    return match_pat(pat, str.substr(1,pat.length-1));
-  }
-  else if (pat[0] != str[0]) {
-    return false;
-  }
-}
-
-/**
- * return true if str and pat are equal.
- */
-function match_str(pat, str) {
-  if (pat.length == 0 && str.length == 0) {
-    return true;
-  }
-  if (pat.length == 0 && str.length > 0) {
-    return false;
+  else if (tokens.length == 0) {
+    tree_cur = get_cur_pos();
   }
   else {
-    return match_pat(pat, str);
+    update_output("usage: ls [folder]");
+    update_output("support for multiple folders will be added later");
+    return;
+  }
+  var ls_str = "";
+  var max_len = 5;
+
+  for (var i = 0; i < tree_cur.children.length; i++) {
+    if (tree_cur.children[i].title.length > max_len) {
+      max_len = tree_cur.children[i].title.length;
+    }
+  }
+
+  for (var i = 0; i < tree_cur.children.length; i++) {
+    ls_str += "<span>"
+    ls_str += tree_cur.children[i].title.replace(" ","\xa0");
+    ls_str += " ";
+    for (var j = 0; j < max_len - tree_cur.children[i].title.length; j++) {
+      ls_str += "\xa0";
+    }
+    ls_str += "\xa0";
+    ls_str += "</span>"
+  }
+
+  if (ls_str.length > 0) {
+    update_output(ls_str);
   }
 }
 
@@ -283,7 +367,54 @@ function bk_open(tokens) {
   for (var i = 0; i < to_open.length; i++) {
     window.open(to_open[i], '_blank');
   }
+}
 
+function clear() {
+  document.getElementById('output_cont').innerHTML = null;
+}
+
+function rename(id,new_name) {
+
+}
+
+function move(id,new_dir) {
+
+}
+
+function mv(tokens) {
+  var new_index;
+  if (tokens.length < 2 || (tokens.length == 3 && isNaN(tokens[2])) || tokens.length > 3) {
+    update_output("usage: mv [-k] [source] [target] [index]");
+    return;
+    //update_output("\xa0\xa0\xa0\xa0\xa0\xa0 mv [source ...] [directory]"); //TODO!!
+  }
+  else if (tokens.length == 3 && !isNaN(tokens[2])) {
+    new_index = parseInt(tokens.splice(tokens.length-1,1)[0]);
+  }
+
+  var flags = get_flags(tokens);
+  tokens = rem_flags(tokens);
+  console.log(flags);
+
+
+
+  var target_tokens = tokens[1].split("/");
+  
+  var source_id = get_temp_new_pos(tokens[0]).id;
+  var cur_ind = get_temp_new_pos(tokens[0]).index;
+
+  var new_name = target_tokens.splice(target_tokens.length-1,1)[0];
+  var new_par_id = get_temp_new_pos(target_tokens.join("/")).id;
+
+  console.log(new_name, new_par_id);
+
+  chrome.bookmarks.update(source_id, {title:new_name},function () {
+    get_bookmarks(function () {
+      chrome.bookmarks.move(source_id, {parentId:new_par_id},function () {
+        get_bookmarks();
+      });
+    });
+  });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,6 +444,11 @@ function tokenize_inp(inp_str,del) {
   return tokens;
 }
 
+String.prototype.replaceAll = function(search, replacement) {
+  var target = this;
+  return target.replace(new RegExp(search, 'g'), replacement);
+};
+
 function tab_complete() {
   var inp_str = document.getElementById('main_input').value;
   var inp_tokens = tokenize_inp(inp_str," ");
@@ -333,7 +469,7 @@ function tab_complete() {
     return;
   }
   else {
-    document.getElementById('main_input').value = inp_tokens.join(" ") + " " + options[0].replace(" ","\\ ");
+    document.getElementById('main_input').value = inp_tokens.join(" ") + " " + options[0].replaceAll(" ","\\ ");
   }
 }
 
@@ -364,6 +500,12 @@ function parse_input() {
   }
   else if (main_cmd == "open") {
     bk_open(tokens);
+  }
+  else if (main_cmd == "clear") {
+    clear();
+  }
+  else if (main_cmd == "mv") {
+    mv(tokens);
   }
   else {
     update_output("-ch_term: " + main_cmd + ": command not found");
