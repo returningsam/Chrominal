@@ -384,7 +384,7 @@ function move(id,new_dir) {
 function mv(tokens) {
   var new_index;
   if (tokens.length < 2 || (tokens.length == 3 && isNaN(tokens[2])) || tokens.length > 3) {
-    update_output("usage: mv [-k] [source] [target] [index]");
+    update_output("usage: mv [-k] source target [index]");
     return;
     //update_output("\xa0\xa0\xa0\xa0\xa0\xa0 mv [source ...] [directory]"); //TODO!!
   }
@@ -399,7 +399,7 @@ function mv(tokens) {
 
 
   var target_tokens = tokens[1].split("/");
-  
+
   var source_id = get_temp_new_pos(tokens[0]).id;
   var cur_ind = get_temp_new_pos(tokens[0]).index;
 
